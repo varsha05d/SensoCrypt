@@ -44,10 +44,15 @@ class TrustFSM:
         self._recover_streak = self._recover_streak + 1 if p >= P_DEGRADE else 0
 
         if self.state == "TRUSTED":
-            if self._suspect_streak >= DWELL_SUSPECT:
-                self.state = "SUSPECT"
-            elif self._degrade_streak >= DWELL_DEGRADE:
-                self.state = "DEGRADED"
+            # Sticky for the rest of the session, by the same product decision as
+            # worker.py's _handle_challenge() (once verified, stop re-checking -- no more
+            # flashes). Without this, a verified person who just holds the phone still
+            # produces weak/near-zero motion evidence with no illumination evidence to back
+            # it up (challenges are paused too), which would otherwise drift the degrade
+            # streak past DWELL_DEGRADE and silently drop back to DEGRADED -- re-arming the
+            # flash and contradicting "verified once, done" for no real reason (nothing
+            # about the feed actually got worse, the phone just stopped moving).
+            pass
         elif self.state == "DEGRADED":
             if self._suspect_streak >= DWELL_SUSPECT:
                 self.state = "SUSPECT"
