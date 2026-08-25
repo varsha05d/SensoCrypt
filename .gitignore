@@ -1,0 +1,32 @@
+# OS
+.DS_Store
+
+# IDE
+.idea/
+
+# Python
+backend/.venv/
+backend/**/__pycache__/
+backend/sensocrypt_backend.egg-info/
+backend/.env
+*.pyc
+
+# Android / Gradle
+android/build/
+android/app/build/
+android/.gradle/
+android/local.properties
+android/.idea/
+*.iml
+
+# Docker
+postgres_data/
+
+# Eval recordings (large binary capture data, not source)
+eval/recordings/
+
+# plan.md is currently unreadable on disk (filesystem-level corruption, ETIMEDOUT on
+# every read attempt -- same failure mode as the earlier iCloud-sync corruption issue).
+# Not needed for deployment (only backend/ is built), so it's excluded rather than
+# blocking git operations on it.
+plan.md

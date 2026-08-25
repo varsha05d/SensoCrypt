@@ -1,0 +1,33 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: sensocrypt
+      POSTGRES_PASSWORD: sensocrypt
+      POSTGRES_DB: sensocrypt
+    ports:
+      - "5433:5432"  # 5432 is taken by a native Homebrew Postgres on this Mac
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sensocrypt"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: ./backend
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://sensocrypt:sensocrypt@postgres:5432/sensocrypt
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend/app:/app/app
+
+volumes:
+  postgres_data:

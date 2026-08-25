@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Dev-only: allows plaintext HTTP to the dev backend, whether reached via `adb reverse`
+  (127.0.0.1, one USB-connected phone) or the dev machine's LAN IP (any phone on the same
+  WiFi; see net/BackendConfig.kt). Remove this once the backend sits behind real TLS
+  (plan.md §2: TLS 1.3 secures client/server traffic; this is a local shortcut).
+-->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">localhost</domain>
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">192.168.1.2</domain>
+    </domain-config>
+</network-security-config>

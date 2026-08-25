@@ -1,0 +1,24 @@
+databases:
+  - name: sensocrypt-db
+    plan: free
+    postgresMajorVersion: "16"
+
+services:
+  - type: web
+    name: sensocrypt-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: sensocrypt-db
+          property: connectionString
+      - key: PASETO_LOCAL_KEY_HEX
+        generateValue: true
+      - key: ANDROID_PACKAGE
+        value: com.sensocrypt
+      - key: PINNED_SIGNING_CERT_DIGESTS_HEX
+        sync: false

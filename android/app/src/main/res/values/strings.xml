@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">SensoCrypt</string>
+    <string name="camera_permission_rationale">SensoCrypt needs camera access to correlate what the camera sees with your phone\'s motion sensors.</string>
+    <string name="camera_permission_denied">Camera permission denied. Grant it in system settings to continue.</string>
+</resources>

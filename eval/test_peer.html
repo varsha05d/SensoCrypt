@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html>
+<head><title>SensoCrypt test peer</title></head>
+<body style="background:#111;color:#eee;font-family:monospace;padding:16px">
+<h3>SensoCrypt browser test peer</h3>
+<div>Call ID: <input id="callId" value="999999"></div>
+<button onclick="join()">Join Call</button>
+<div id="log" style="white-space:pre-wrap;font-size:12px;margin-top:8px;height:200px;overflow-y:auto;border:1px solid #444;padding:8px"></div>
+<div style="display:flex;gap:8px;margin-top:8px">
+  <canvas id="localCanvas" width="320" height="240" style="border:1px solid #3DDC97"></canvas>
+  <video id="remoteVideo" autoplay playsinline width="320" height="240" style="border:1px solid #B3261E;background:#000"></video>
+</div>
+<div id="peerVerdict" style="margin-top:8px;font-size:16px"></div>
+
+<script>
+function log(msg) {
+  const el = document.getElementById('log');
+  el.textContent += msg + "\n";
+  el.scrollTop = el.scrollHeight;
+}
+
+let pc = null;
+let ws = null;
+
+function startCanvasStream() {
+  const canvas = document.getElementById('localCanvas');
+  const ctx = canvas.getContext('2d');
+  let hue = 0;
+  setInterval(() => {
+    hue = (hue + 2) % 360;
+    ctx.fillStyle = `hsl(${hue}, 70%, 40%)`;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = 'white';
+    ctx.font = '20px monospace';
+    ctx.fillText('BROWSER TEST PEER', 20, 40);
+    ctx.fillText(new Date().toLocaleTimeString(), 20, 70);
+  }, 100);
+  return canvas.captureStream(15);
+}
+
+async function join() {
+  const callId = document.getElementById('callId').value;
+  ws = new WebSocket(`ws://127.0.0.1:8000/ws/signal/${callId}`);
+
+  pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+
+  const stream = startCanvasStream();
+  stream.getTracks().forEach(track => pc.addTrack(track, stream));
+
+  pc.onicecandidate = (event) => {
+    if (event.candidate) {
+      ws.send(JSON.stringify({
+        type: 'ice',
+        candidate: event.candidate.candidate,
+        sdpMid: event.candidate.sdpMid,
+        sdpMLineIndex: event.candidate.sdpMLineIndex,
+      }));
+    }
+  };
+
+  pc.ontrack = (event) => {
+    log('Received remote track: ' + event.track.kind);
+    document.getElementById('remoteVideo').srcObject = event.streams[0];
+  };
+
+  ws.onopen = () => log('signaling connected');
+  ws.onerror = (e) => log('ws error: ' + e);
+  ws.onmessage = async (event) => {
+    const msg = JSON.parse(event.data);
+    log('recv: ' + msg.type);
+    if (msg.type === 'offer') {
+      await pc.setRemoteDescription({ type: 'offer', sdp: msg.sdp });
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      ws.send(JSON.stringify({ type: 'answer', sdp: answer.sdp }));
+    } else if (msg.type === 'answer') {
+      await pc.setRemoteDescription({ type: 'answer', sdp: msg.sdp });
+    } else if (msg.type === 'ice') {
+      try {
+        await pc.addIceCandidate({ candidate: msg.candidate, sdpMid: msg.sdpMid, sdpMLineIndex: msg.sdpMLineIndex });
+      } catch (e) { log('addIceCandidate failed: ' + e); }
+    } else if (msg.type === 'verdict') {
+      const el = document.getElementById('peerVerdict');
+      el.textContent = `Phone verdict: ${msg.good ? 'VERIFIED' : 'NOT VERIFIED'} (score ${msg.score})`;
+      el.style.color = msg.good ? '#3DDC97' : '#ff6b6b';
+    }
+  };
+
+  // Send a fake verdict every few seconds so we can confirm the phone receives it
+  setInterval(() => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'verdict', good: true, score: 0.91 }));
+      log('sent fake verdict: VERIFIED 0.91');
+    }
+  }, 4000);
+}
+</script>
+</body>
+</html>
