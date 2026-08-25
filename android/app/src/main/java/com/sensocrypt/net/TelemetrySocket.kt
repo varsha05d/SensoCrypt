@@ -14,7 +14,7 @@ import okio.ByteString
 class TelemetrySocket(
     private val sessionId: String,
     private val quick: Boolean = false,
-    private val baseWsUrl: String = "ws://$BACKEND_HOST",
+    private val baseWsUrl: String = "$BACKEND_WS_SCHEME://$BACKEND_HOST",
 ) {
     private val client = OkHttpClient()
     private var webSocket: WebSocket? = null

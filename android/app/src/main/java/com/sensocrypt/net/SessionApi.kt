@@ -15,7 +15,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 @Serializable data class KexResponse(val epk_s_b64: String)
 
 /** /api/v1/session/kex (plan.md §4.4, §17.1). */
-class SessionApi(private val baseUrl: String = "http://$BACKEND_HOST/api/v1/session") {
+class SessionApi(private val baseUrl: String = "$BACKEND_HTTP_SCHEME://$BACKEND_HOST/api/v1/session") {
     private val client = OkHttpClient()
     private val json = Json { ignoreUnknownKeys = true }
     private val jsonMedia = "application/json; charset=utf-8".toMediaType()

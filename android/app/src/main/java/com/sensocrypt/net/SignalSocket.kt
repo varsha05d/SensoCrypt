@@ -10,7 +10,7 @@ import okhttp3.WebSocketListener
 
 /** /ws/signal/{call_id}: relays SDP offer/answer, ICE candidates, and verdict messages
  * between exactly two peers (plan.md §11 Phase 6). */
-class SignalSocket(private val callId: String, private val baseWsUrl: String = "ws://$BACKEND_HOST") {
+class SignalSocket(private val callId: String, private val baseWsUrl: String = "$BACKEND_WS_SCHEME://$BACKEND_HOST") {
     private val client = OkHttpClient()
     private var webSocket: WebSocket? = null
 

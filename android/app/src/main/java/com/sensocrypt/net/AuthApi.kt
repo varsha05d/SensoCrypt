@@ -30,12 +30,9 @@ data class VerifyRequest(
 
 class AuthApiException(val httpCode: Int, val body: String) : Exception("HTTP $httpCode: $body")
 
-/**
- * Talks to the /api/v1/auth endpoints (plan.md §17.1). Default base URL assumes `adb reverse
- * tcp:8000 tcp:8000` so the phone's localhost:8000 routes to the dev machine over USB --
- * see plan.md §2 on why this is TLS-less only for local dev.
- */
-class AuthApi(private val baseUrl: String = "http://$BACKEND_HOST/api/v1/auth") {
+/** Talks to the /api/v1/auth endpoints (plan.md §17.1). Default base URL comes from
+ * net/BackendConfig.kt. */
+class AuthApi(private val baseUrl: String = "$BACKEND_HTTP_SCHEME://$BACKEND_HOST/api/v1/auth") {
     private val client = OkHttpClient()
     private val json = Json { ignoreUnknownKeys = true }
     private val jsonMedia = "application/json; charset=utf-8".toMediaType()

@@ -78,8 +78,28 @@ class WebRtcSession(private val context: Context, private val eglBase: EglBase) 
         val audioSource: AudioSource = factory.createAudioSource(MediaConstraints())
         val audioTrack: AudioTrack = factory.createAudioTrack("audio0", audioSource)
 
+        // STUN alone only works when at least one side's NAT allows a direct hole-punch --
+        // fine on the same LAN, but two phones on two different home/mobile networks often
+        // sit behind NATs that block that entirely. TURN relays the media through a third
+        // party in that case. Open Relay Project's free static credentials (no signup, no
+        // cost) stand in for a self-hosted coturn server, which isn't worth running for a
+        // free-tier deployment.
         val rtcConfig = PeerConnection.RTCConfiguration(
-            listOf(PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer()),
+            listOf(
+                PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer(),
+                PeerConnection.IceServer.builder("turn:openrelay.metered.ca:80")
+                    .setUsername("openrelayproject")
+                    .setPassword("openrelayproject")
+                    .createIceServer(),
+                PeerConnection.IceServer.builder("turn:openrelay.metered.ca:443")
+                    .setUsername("openrelayproject")
+                    .setPassword("openrelayproject")
+                    .createIceServer(),
+                PeerConnection.IceServer.builder("turn:openrelay.metered.ca:443?transport=tcp")
+                    .setUsername("openrelayproject")
+                    .setPassword("openrelayproject")
+                    .createIceServer(),
+            ),
         )
         peerConnection = factory.createPeerConnection(
             rtcConfig,
