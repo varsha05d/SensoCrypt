@@ -29,6 +29,19 @@ class SignalSocket(private val callId: String, private val baseWsUrl: String = "
                 override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                     _messages.tryEmit("""{"type":"error","message":"${t.message}"}""")
                 }
+
+                override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                    // 4409/4410 are this server's own codes (see backend/app/api/signal.py)
+                    // for "already two people in this call" and "this call already ended" --
+                    // surface them as the same synthetic error message type onFailure uses,
+                    // so the UI has one place to handle "couldn't join" for any reason.
+                    val message = when (code) {
+                        4409 -> "This call already has two people in it"
+                        4410 -> "This call has already ended"
+                        else -> return
+                    }
+                    _messages.tryEmit("""{"type":"error","message":"$message"}""")
+                }
             },
         )
     }

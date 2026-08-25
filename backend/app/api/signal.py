@@ -4,16 +4,27 @@ verdict content is inspected or persisted here -- it's a pure relay; each peer s
 verdict on its own end.
 """
 
+import json
+
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 router = APIRouter()
 
 _rooms: dict[str, list[WebSocket]] = {}
+# Codes are short-lived and randomly generated per call (plan.md: 6-digit code shared via
+# the Share Code button) -- once either side explicitly ends a call, the code is retired
+# rather than left joinable, so a stale code can't be reused to rejoin (or, for someone who
+# never had it, to eavesdrop on) a call that's already over.
+_ended_calls: set[str] = set()
 
 
 @router.websocket("/ws/signal/{call_id}")
 async def signal_ws(ws: WebSocket, call_id: str):
     await ws.accept()
+
+    if call_id in _ended_calls:
+        await ws.close(code=4410)  # call has already ended
+        return
 
     peers = _rooms.setdefault(call_id, [])
     if len(peers) >= 2:
@@ -40,6 +51,13 @@ async def signal_ws(ws: WebSocket, call_id: str):
             for peer in peers:
                 if peer is not ws:
                     await peer.send_text(msg)
+            try:
+                msg_type = json.loads(msg).get("type")
+            except (json.JSONDecodeError, AttributeError):
+                msg_type = None
+            if msg_type == "end":
+                _ended_calls.add(call_id)
+                break
     except WebSocketDisconnect:
         pass
     finally:

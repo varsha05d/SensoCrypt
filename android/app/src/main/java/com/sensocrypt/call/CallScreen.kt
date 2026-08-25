@@ -1,6 +1,8 @@
 package com.sensocrypt.call
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -21,6 +23,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.CallEnd
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Videocam
@@ -55,6 +58,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
 import com.sensocrypt.capture.LiveStreamer
 import com.sensocrypt.capture.Synchronizer
 import com.sensocrypt.challenge.runChallengeFlash
@@ -92,8 +96,60 @@ private fun generateCallId(): String = (100_000..999_999).random().toString()
  * needed -- WebRtcFrameSink taps the same camera frames WebRTC is already capturing for the
  * call itself.
  */
+private val CALL_PERMISSIONS = arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)
+
 @Composable
 fun CallScreen(onExit: () -> Unit) {
+    val context = LocalContext.current
+
+    // The home screen only ever asks for CAMERA (its own preview) -- RECORD_AUDIO has never
+    // been requested anywhere, so without this gate the mic silently produces nothing and
+    // calls end up video-only despite the audio track being wired up in WebRtcSession.
+    var hasPermissions by remember {
+        mutableStateOf(CALL_PERMISSIONS.all { ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED })
+    }
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions(),
+    ) { results -> hasPermissions = results.values.all { it } }
+
+    LaunchedEffect(Unit) {
+        if (!hasPermissions) permissionLauncher.launch(CALL_PERMISSIONS)
+    }
+
+    if (!hasPermissions) {
+        CallPermissionScreen(
+            onGrant = { permissionLauncher.launch(CALL_PERMISSIONS) },
+            onExit = onExit,
+        )
+        return
+    }
+
+    CallScreenContent(onExit = onExit)
+}
+
+@Composable
+private fun CallPermissionScreen(onGrant: () -> Unit, onExit: () -> Unit) {
+    Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+        BackIconButton(onExit, modifier = Modifier.align(Alignment.TopStart).systemBarsPadding().padding(12.dp))
+        Column(
+            modifier = Modifier.fillMaxSize().padding(28.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                "SensoCrypt needs camera and microphone access to make a video call.",
+                color = Color.White,
+                textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.bodyLarge,
+            )
+            Spacer(Modifier.height(16.dp))
+            Button(onClick = onGrant) { Text("Grant permissions") }
+        }
+    }
+}
+
+@Composable
+private fun CallScreenContent(onExit: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val keystoreManager = remember { KeystoreManager(context) }
@@ -112,6 +168,10 @@ fun CallScreen(onExit: () -> Unit) {
     // ~9s at the 3s broadcast interval) escalates to the warning.
     var peerBadStreak by remember { mutableStateOf(0) }
     var challengeFlashColor by remember { mutableStateOf<Color?>(null) }
+    // Non-null once the call is over for any reason (either side hung up, or joining failed
+    // because the room was full or the code was already used) -- shown as a full-screen
+    // overlay with a single way out, back to the home screen.
+    var endedMessage by remember { mutableStateOf<String?>(null) }
 
     val eglBase = remember { EglBase.create() }
     val synchronizer = remember { Synchronizer() }
@@ -144,6 +204,14 @@ fun CallScreen(onExit: () -> Unit) {
 
     fun sendSignal(json: JSONObject) {
         signalSocket?.send(json.toString())
+    }
+
+    fun endCall() {
+        // Tell the other side (relayed by the server, which also retires this call_id so
+        // neither side can rejoin with it -- see backend/app/api/signal.py) before tearing
+        // down locally.
+        sendSignal(JSONObject().apply { put("type", "end") })
+        onExit()
     }
 
     fun sendOfferOnce() {
@@ -286,6 +354,12 @@ fun CallScreen(onExit: () -> Unit) {
                             // keep showing the verified state until the streak proves otherwise.
                         }
                     }
+                    "end" -> {
+                        endedMessage = "The other person ended the call."
+                    }
+                    "error" -> {
+                        endedMessage = json.optString("message", "Couldn't join the call.")
+                    }
                 }
             }
         }
@@ -326,7 +400,11 @@ fun CallScreen(onExit: () -> Unit) {
             Box(modifier = Modifier.fillMaxSize()) {
                 AndroidView(modifier = Modifier.fillMaxSize(), factory = { remoteRenderer })
 
-                BackIconButton(onExit, modifier = Modifier.align(Alignment.TopStart).systemBarsPadding().padding(12.dp))
+                // Once actually in a call, leaving any way (this or the red End Call
+                // button below) should end it properly -- notify the other side and retire
+                // the code -- rather than let Back be a silent bypass that leaves the code
+                // rejoinable and the other person hanging with no explanation.
+                BackIconButton({ endCall() }, modifier = Modifier.align(Alignment.TopStart).systemBarsPadding().padding(12.dp))
 
                 PeerVerdictBanner(
                     text = peerVerdictText,
@@ -348,13 +426,56 @@ fun CallScreen(onExit: () -> Unit) {
                     good = myVerdictGood,
                     modifier = Modifier.align(Alignment.BottomStart).padding(16.dp),
                 )
+
+                EndCallButton(
+                    onClick = { endCall() },
+                    modifier = Modifier.align(Alignment.BottomCenter).systemBarsPadding().padding(bottom = 16.dp),
+                )
             }
         }
 
-        // Illumination challenge overlay (plan.md §6.1) -- on top of everything, since the
-        // screen itself is the light source being scored, not something the camera "reads".
+        // Illumination challenge overlay (plan.md §6.1) -- on top of everything, including
+        // the call UI, since the screen itself is the light source being scored, not
+        // something the camera "reads".
         challengeFlashColor?.let { c ->
             Box(modifier = Modifier.fillMaxSize().background(c))
+        }
+
+        // On top of the flash too -- once the call is over there's nothing left to score.
+        endedMessage?.let { message -> CallEndedOverlay(message = message, onBackToHome = onExit) }
+    }
+}
+
+@Composable
+private fun EndCallButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    IconButton(
+        onClick = onClick,
+        modifier = modifier
+            .size(64.dp)
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.error),
+    ) {
+        Icon(Icons.Filled.CallEnd, contentDescription = "End call", tint = Color.White, modifier = Modifier.size(28.dp))
+    }
+}
+
+@Composable
+private fun CallEndedOverlay(message: String, onBackToHome: () -> Unit) {
+    Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.85f)), contentAlignment = Alignment.Center) {
+        Column(
+            modifier = Modifier.padding(32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Icon(Icons.Filled.CallEnd, contentDescription = null, tint = Color.White.copy(alpha = 0.8f), modifier = Modifier.size(40.dp))
+            Spacer(Modifier.height(12.dp))
+            Text(
+                message,
+                color = Color.White,
+                style = MaterialTheme.typography.titleMedium,
+                textAlign = TextAlign.Center,
+            )
+            Spacer(Modifier.height(20.dp))
+            Button(onClick = onBackToHome) { Text("Back to Home") }
         }
     }
 }
