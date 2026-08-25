@@ -18,7 +18,13 @@ import numpy as np
 
 CHALLENGE_STATES = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 255), (0, 0, 0)]
 STATE_DURATION_MS = 220
-CHALLENGE_LEAD_S = 1.0  # time between issuing a challenge and it starting, for network + render latency
+# Time between issuing a challenge and it starting, to absorb network + render latency
+# before the client needs to flip the screen color. 1.0s was fine for local-LAN testing
+# (~1-5ms round trip) but was measured arriving 1.48s late over the real internet to a
+# deployed backend -- the client discarded every single challenge as stale, so illumination
+# scoring never fired at all in production. 3.0s gives real headroom without being
+# perceptible as a delay during a call.
+CHALLENGE_LEAD_S = 3.0
 
 
 def _luma(rgb: tuple[int, int, int]) -> float:

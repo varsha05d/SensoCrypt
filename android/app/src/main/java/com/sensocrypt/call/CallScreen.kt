@@ -241,6 +241,7 @@ private fun CallScreenContent(onExit: () -> Unit) {
                     ws.lastVerdict.collect { text ->
                         val json = try { JSONObject(text) } catch (e: Exception) { return@collect }
                         json.optJSONObject("new_challenge")?.let { challenge ->
+                            Log.d("SensoCrypt", "new_challenge arrived: $challenge")
                             launch { runChallengeFlash(challenge) { challengeFlashColor = it } }
                         }
                     }
