@@ -19,6 +19,11 @@ android/local.properties
 android/.idea/
 *.iml
 
+# Release signing key -- this is the app's permanent identity; losing it means every
+# future update must ship as a fresh install rather than an update. Never committed.
+android/keystore/
+android/keystore.properties
+
 # Docker
 postgres_data/
 
