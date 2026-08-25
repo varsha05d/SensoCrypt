@@ -18,11 +18,14 @@ NO_EVIDENCE_TIMEOUT_S = 10.0
 # Illumination is the PRIMARY continuous signal (see fusion.py's ILLUM_WEIGHT): unlike
 # egomotion it needs no deliberate motion from the user at all, which matters for the
 # actual threat model here -- a scam/deepfake call target (e.g. an elderly person) cannot
-# be expected to keep the phone moving through a calm conversation. Fired every 4-7s
-# instead of the plan's original 8-15s so it's available far more often than motion evidence
-# realistically is.
-CHALLENGE_MIN_GAP_S = 4.0
-CHALLENGE_MAX_GAP_S = 7.0
+# be expected to keep the phone moving through a calm conversation. By explicit product
+# decision, "checking" must never be a silent state -- back-to-back challenges (only
+# CHALLENGE_LEAD_S's latency buffer between them, not an extra multi-second gap) so the
+# flash is effectively continuous for as long as the call isn't yet TRUSTED. The moment it
+# reaches TRUSTED, worker.py stops scheduling challenges entirely -- checking is either
+# constantly visible or completely off, never quietly running in the background.
+CHALLENGE_MIN_GAP_S = 0.3
+CHALLENGE_MAX_GAP_S = 0.6
 # plan.md §12 targets these thresholds against a properly trained fusion model on a real
 # genuine/attack dataset. This project has neither yet (§0's fuse() is a plain average, not
 # a trained model) -- these values are instead calibrated against real observed scores from
