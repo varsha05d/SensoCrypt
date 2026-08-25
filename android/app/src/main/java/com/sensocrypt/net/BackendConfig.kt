@@ -14,11 +14,11 @@ package com.sensocrypt.net
  * network_security_config cleartext exception needed, and it works from any network, not
  * just the same LAN.
  */
-const val BACKEND_HOST = "192.168.1.2:8000"
-const val BACKEND_HTTP_SCHEME = "http"
-const val BACKEND_WS_SCHEME = "ws"
+const val BACKEND_HOST = "sensocrypt-backend.onrender.com"
+const val BACKEND_HTTP_SCHEME = "https"
+const val BACKEND_WS_SCHEME = "wss"
 
-// Once deployed to Render, replace the three lines above with:
-// const val BACKEND_HOST = "sensocrypt-backend.onrender.com"
-// const val BACKEND_HTTP_SCHEME = "https"
-// const val BACKEND_WS_SCHEME = "wss"
+// Local dev, if needed again later:
+// const val BACKEND_HOST = "192.168.1.2:8000"
+// const val BACKEND_HTTP_SCHEME = "http"
+// const val BACKEND_WS_SCHEME = "ws"
