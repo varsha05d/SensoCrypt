@@ -3,6 +3,7 @@ package com.sensocrypt.call
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -228,6 +229,7 @@ private fun CallScreenContent(onExit: () -> Unit) {
         reportingJob = scope.launch {
             try {
                 val handshake = authenticateAndKex(context, deviceId, keystoreManager, authApi, sessionApi, keyguardLauncher)
+                Log.i("SensoCrypt", "liveness reporting: handshake OK, session_id=${handshake.challenge.session_id}")
                 val ws = TelemetrySocket(handshake.challenge.session_id, quick = true)
                 ws.connect()
 
@@ -253,12 +255,14 @@ private fun CallScreenContent(onExit: () -> Unit) {
                         val encrypted =
                             encryptTelemetryChunk(handshake.kTel, handshake.challenge.session_id, chunk.seq, plaintext)
                         ws.send(encrypted)
+                        Log.d("SensoCrypt", "sent chunk seq=${chunk.seq} frames=${chunk.frames.size}")
                     }
 
                     val now = System.currentTimeMillis()
                     if (now - lastBroadcastMs >= VERDICT_BROADCAST_INTERVAL_MS) {
                         lastBroadcastMs = now
                         val json = try { JSONObject(ws.lastVerdict.value) } catch (e: Exception) { null }
+                        Log.d("SensoCrypt", "verdict raw=${ws.lastVerdict.value}")
                         val p = json?.optDouble("p_trust", -1.0) ?: -1.0
                         val trustState = json?.optString("trust_state", "")
                         val good = p >= CLIENT_P_TRUST || trustState == "TRUSTED"
@@ -274,8 +278,11 @@ private fun CallScreenContent(onExit: () -> Unit) {
                     }
                 }
             } catch (e: Exception) {
-                // Swallow: the peer banner already communicates the important state; a
-                // silent stop just means this side stops re-broadcasting, not a crash.
+                // Logged (not surfaced in the UI): the peer banner already communicates the
+                // important state to the OTHER side; a stop here just means this side quits
+                // re-broadcasting, not a crash -- but silently swallowing it made this exact
+                // failure mode impossible to diagnose, so log it at least.
+                Log.e("SensoCrypt", "liveness reporting stopped", e)
             }
         }
     }

@@ -34,6 +34,26 @@ class Settings(BaseSettings):
     #   python -c "import secrets; print(secrets.token_hex(32))"
     paseto_local_key_hex: str = ""
 
+    @field_validator("paseto_local_key_hex")
+    @classmethod
+    def _require_valid_paseto_key(cls, v: str) -> str:
+        # A managed host's "generate a random value for this env var" feature (e.g.
+        # Render's generateValue: true) isn't guaranteed to produce valid hex -- that
+        # failure mode previously surfaced as an unhandled 500 on the first real
+        # /auth/verify call in production (bytes.fromhex() raising deep inside token
+        # issuance), instead of a clear error at startup where it's actually diagnosable.
+        try:
+            raw = bytes.fromhex(v)
+        except ValueError as exc:
+            raise ValueError(
+                "PASETO_LOCAL_KEY_HEX is not valid hex -- generate one with "
+                "`python -c \"import secrets; print(secrets.token_hex(32))\"` and set it explicitly "
+                "(don't rely on a host's auto-generated value for this)."
+            ) from exc
+        if len(raw) != 32:
+            raise ValueError(f"PASETO_LOCAL_KEY_HEX must decode to exactly 32 bytes, got {len(raw)}")
+        return v
+
     @property
     def pinned_signing_cert_digests(self) -> set[bytes]:
         if not self.pinned_signing_cert_digests_hex:

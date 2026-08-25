@@ -17,7 +17,7 @@ services:
           name: sensocrypt-db
           property: connectionString
       - key: PASETO_LOCAL_KEY_HEX
-        generateValue: true
+        sync: false
       - key: ANDROID_PACKAGE
         value: com.sensocrypt
       - key: PINNED_SIGNING_CERT_DIGESTS_HEX
