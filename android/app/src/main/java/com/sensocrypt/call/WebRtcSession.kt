@@ -1,6 +1,7 @@
 package com.sensocrypt.call
 
 import android.content.Context
+import android.media.AudioManager
 import org.webrtc.AudioSource
 import org.webrtc.AudioTrack
 import org.webrtc.Camera2Enumerator
@@ -42,6 +43,7 @@ class WebRtcSession(private val context: Context, private val eglBase: EglBase) 
     private val factory: PeerConnectionFactory
     private var peerConnection: PeerConnection? = null
     private var videoCapturer: VideoCapturer? = null
+    private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
     var onIceCandidate: ((IceCandidate) -> Unit)? = null
     var onRemoteVideoTrack: ((VideoTrack) -> Unit)? = null
@@ -59,6 +61,14 @@ class WebRtcSession(private val context: Context, private val eglBase: EglBase) 
     }
 
     fun start(localRenderer: SurfaceViewRenderer, livenessFrameSink: VideoSink? = null) {
+        // Without this, Android routes call audio to the earpiece receiver -- the tiny
+        // speaker meant for holding the phone to your ear -- since nothing here ever told
+        // it this is a video call held at arm's length. MODE_IN_COMMUNICATION also engages
+        // the audio path WebRTC's echo cancellation/gain control actually expects; leaving
+        // it at MODE_NORMAL degrades both directions, not just playback volume.
+        audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+        audioManager.isSpeakerphoneOn = true
+
         localRenderer.init(eglBase.eglBaseContext, null)
 
         val capturer = createFrontCameraCapturer() ?: throw IllegalStateException("No front camera available")
@@ -169,6 +179,8 @@ class WebRtcSession(private val context: Context, private val eglBase: EglBase) 
         videoCapturer?.dispose()
         peerConnection?.close()
         peerConnection?.dispose()
+        audioManager.isSpeakerphoneOn = false
+        audioManager.mode = AudioManager.MODE_NORMAL
     }
 
     private fun createFrontCameraCapturer(): VideoCapturer? {
