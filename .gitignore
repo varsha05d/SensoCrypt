@@ -30,3 +30,4 @@ eval/recordings/
 # Not needed for deployment (only backend/ is built), so it's excluded rather than
 # blocking git operations on it.
 plan.md
+.claude/
