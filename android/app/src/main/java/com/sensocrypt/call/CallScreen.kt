@@ -237,7 +237,10 @@ private fun CallScreenContent(onExit: () -> Unit) {
                 // moment a challenge arrives, not just when the 3s broadcast tick happens
                 // to sample it -- missing this was why S_illum stayed 0 in-call: the
                 // server was scheduling challenges but nothing ever rendered the flash.
-                launch {
+                // Held in a val so it can be explicitly cancelled once TRUSTED is reached
+                // below -- it never completes on its own (collect{} on a StateFlow runs
+                // forever), so without cancelling it this coroutine would never finish.
+                val challengeCollectorJob = launch {
                     ws.lastVerdict.collect { text ->
                         val json = try { JSONObject(text) } catch (e: Exception) { return@collect }
                         json.optJSONObject("new_challenge")?.let { challenge ->
@@ -276,6 +279,22 @@ private fun CallScreenContent(onExit: () -> Unit) {
                                 put("score", displayScore)
                             },
                         )
+
+                        if (trustState == "TRUSTED") {
+                            // Verified once, for the rest of this call -- matches the
+                            // backend's own "stop re-checking once TRUSTED" decision
+                            // (worker.py, fusion.py). Stopping the whole reporting loop
+                            // here (not just the flash) also closes a real bug this
+                            // surfaced: the signing key needs re-confirmation every
+                            // AUTH_VALIDITY_SECONDS (KeystoreManager) -- if that expired
+                            // mid-call, the next signing attempt would spin up a brand
+                            // new telemetry session from scratch, silently resetting an
+                            // already-earned TRUSTED state back to "checking".
+                            Log.i("SensoCrypt", "TRUSTED reached -- stopping liveness reporting for this call")
+                            challengeCollectorJob.cancel()
+                            ws.close()
+                            return@launch
+                        }
                     }
                 }
             } catch (e: Exception) {
