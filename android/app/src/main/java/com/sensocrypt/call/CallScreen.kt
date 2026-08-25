@@ -1,7 +1,6 @@
 package com.sensocrypt.call
 
-import android.content.ClipData
-import android.content.ClipboardManager
+import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -27,11 +26,13 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.HourglassTop
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -429,6 +430,17 @@ private fun CallLobby(
     onExit: () -> Unit,
 ) {
     val clipboard = LocalClipboardManager.current
+    val context = LocalContext.current
+
+    fun shareCode() {
+        val message = "Join my SensoCrypt video call: open the app, tap \"Start Video Call\", " +
+            "and enter this code: $callId"
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, message)
+        }
+        context.startActivity(Intent.createChooser(intent, "Share call code"))
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         BackIconButton(onExit, modifier = Modifier.align(Alignment.TopStart).systemBarsPadding().padding(12.dp))
@@ -471,6 +483,18 @@ private fun CallLobby(
                 },
                 modifier = Modifier.fillMaxWidth(),
             )
+
+            Spacer(Modifier.height(12.dp))
+
+            OutlinedButton(
+                onClick = { shareCode() },
+                modifier = Modifier.fillMaxWidth().height(54.dp),
+                shape = RoundedCornerShape(16.dp),
+            ) {
+                Icon(Icons.Filled.Share, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("Share Code", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+            }
 
             Spacer(Modifier.height(20.dp))
 
