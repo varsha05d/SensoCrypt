@@ -3,6 +3,7 @@ session via AAD, monotonic seq gives replay/reorder rejection for free. Feeds th
 per-connection LivenessEngine and streams verdicts back over the same socket.
 """
 
+import asyncio
 import base64
 import json
 import logging
@@ -54,7 +55,17 @@ async def telemetry_ws(ws: WebSocket, session_id: str):
                 f["jpeg_bytes"] = base64.b64decode(f.pop("jpeg_b64"))
 
             try:
-                verdict = engine.ingest(chunk)
+                # engine.ingest() does real CPU work (OpenCV optical flow, scipy bandpass
+                # filtering, brute-force axis-mapping search) synchronously -- run it off
+                # the event loop thread. Without this, one session's per-chunk processing
+                # blocks every OTHER concurrent session's WebSocket entirely (a call needs
+                # exactly two simultaneous sessions by design), which surfaced as one phone
+                # stalling for 15+ seconds and receiving a wildly stale illumination
+                # challenge while the other phone's session was being processed. Safe to
+                # offload: each connection owns its own LivenessEngine instance, and this
+                # connection's own loop awaits one ingest() at a time, so there's no
+                # concurrent access to the same engine's state from multiple threads.
+                verdict = await asyncio.to_thread(engine.ingest, chunk)
             except Exception:  # noqa: BLE001
                 # A scoring bug should degrade this one window, not silently drop the
                 # connection -- that reads to the client as an unexplained "socket error".
