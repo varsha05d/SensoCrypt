@@ -9,7 +9,6 @@ proves the camera is live, not that the face in frame is real (§0.1); Channel B
 actually starts answering that question.
 """
 
-import random
 from collections import deque
 
 import cv2
@@ -20,8 +19,6 @@ from app.liveness.constants import (
     AXIS_MAP_FRONT,
     BAND_HI_HZ,
     BAND_LO_HZ,
-    CHALLENGE_MAX_GAP_S,
-    CHALLENGE_MIN_GAP_S,
     FS_HZ,
     MOTION_GATE,
     NO_EVIDENCE_TIMEOUT_S,
@@ -52,7 +49,7 @@ class LivenessEngine:
         self._challenge_scheduled_once = False
 
         self.active_challenge: dict | None = None
-        self.next_challenge_at_ns: int | None = None
+        self.pending_challenge: dict | None = None
         self.last_illum_score: dict | None = None
         self.last_illum_score_ns: int | None = None
 
@@ -160,7 +157,17 @@ class LivenessEngine:
     def _handle_challenge(self, latest_ts: int) -> dict | None:
         """Schedules, times out, and scores the illumination challenge. Returns a
         new-challenge payload to forward to the client, or None if nothing new was issued
-        this tick."""
+        this tick.
+
+        Pipelined: the NEXT challenge is staged (its CHALLENGE_LEAD_S latency-safety wait
+        started) the moment the CURRENT one begins flashing, not after it finishes scoring.
+        Serializing lead-wait -> flash -> score -> lead-wait -> flash -> score meant
+        consecutive challenges landed roughly 2x CHALLENGE_LEAD_S apart -- most of that a
+        silent gap with nothing on screen, which read as "stuck", not "checking". Staging
+        the next one early overlaps its wait with the current challenge's active window,
+        so flashes land roughly CHALLENGE_LEAD_S apart instead, with the full safety margin
+        still intact on every single challenge.
+        """
         if self.trust_fsm.state == "TRUSTED":
             # Verified once -- stop flashing entirely, by product decision. Trade-off,
             # stated plainly: the system will not notice if the feed is swapped out after
@@ -168,26 +175,18 @@ class LivenessEngine:
             # drops below TRUSTED (that happens on its own via the state machine if the
             # motion/illumination evidence turns bad -- this function just won't schedule
             # a new challenge while TRUSTED holds).
+            self.active_challenge = None
+            self.pending_challenge = None
             return None
 
-        if self.active_challenge is None and self.next_challenge_at_ns is None:
-            if self.quick and not self._challenge_scheduled_once:
-                gap_s = 0.5
-            else:
-                gap_s = random.uniform(CHALLENGE_MIN_GAP_S, CHALLENGE_MAX_GAP_S)
-            self.next_challenge_at_ns = latest_ts + int(gap_s * 1e9)
-            self._challenge_scheduled_once = True
-
         new_challenge = None
-        if (
-            self.active_challenge is None
-            and self.next_challenge_at_ns is not None
-            and latest_ts >= self.next_challenge_at_ns
-        ):
-            start_at = latest_ts + int(challenge_mod.CHALLENGE_LEAD_S * 1e9)
-            self.active_challenge = challenge_mod.generate_challenge(start_at)
-            self.next_challenge_at_ns = None
-            new_challenge = self.active_challenge
+        current_has_started = self.active_challenge is not None and latest_ts >= self.active_challenge["start_at_ns"]
+        if self.pending_challenge is None and (self.active_challenge is None or current_has_started):
+            lead_s = 0.5 if (self.quick and not self._challenge_scheduled_once) else challenge_mod.CHALLENGE_LEAD_S
+            start_at = latest_ts + int(lead_s * 1e9)
+            self.pending_challenge = challenge_mod.generate_challenge(start_at)
+            self._challenge_scheduled_once = True
+            new_challenge = self.pending_challenge
 
         if self.active_challenge is not None:
             total_dur_ns = int(sum(s["dur_ms"] for s in self.active_challenge["states"]) * 1e6)
@@ -201,6 +200,10 @@ class LivenessEngine:
                 self.last_illum_score = challenge_mod.illumination_score(observed, self.active_challenge)
                 self.last_illum_score_ns = latest_ts
                 self.active_challenge = None
+
+        if self.active_challenge is None and self.pending_challenge is not None:
+            self.active_challenge = self.pending_challenge
+            self.pending_challenge = None
 
         return new_challenge
 
