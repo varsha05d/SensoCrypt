@@ -169,10 +169,6 @@ private fun CallScreenContent(onExit: () -> Unit) {
     // ~9s at the 3s broadcast interval) escalates to the warning.
     var peerBadStreak by remember { mutableStateOf(0) }
     var challengeFlashColor by remember { mutableStateOf<Color?>(null) }
-    // Raw per-window liveness numbers for this phone's own side -- shown as a small live
-    // panel so the real sensor/vision analysis behind "Verified" is visible, not just a
-    // pass/fail label.
-    var myMetrics by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
     // Non-null once the call is over for any reason (either side hung up, or joining failed
     // because the room was full or the code was already used) -- shown as a full-screen
     // overlay with a single way out, back to the home screen.
@@ -276,17 +272,6 @@ private fun CallScreenContent(onExit: () -> Unit) {
                         val good = p >= CLIENT_P_TRUST || trustState == "TRUSTED"
                         val displayScore = p.coerceAtLeast(0.0)
                         myVerdictGood = good
-
-                        fun fmt(key: String) = json?.optDouble(key)?.let { if (it.isNaN()) "—" else "%.3f".format(it) } ?: "—"
-                        val illum = json?.optJSONObject("S_illum")
-                        myMetrics = listOf(
-                            "gyro↔vision r" to fmt("r"),
-                            "motion score" to fmt("S_A"),
-                            "gyro energy" to fmt("energy"),
-                            "flash score" to (illum?.optDouble("S_illum")?.let { "%.3f".format(it) } ?: "—"),
-                            "p_trust" to (if (p < 0) "—" else "%.3f".format(p)),
-                            "state" to (trustState?.ifBlank { "—" } ?: "—"),
-                        )
                         sendSignal(
                             JSONObject().apply {
                                 put("type", "verdict")
@@ -469,13 +454,6 @@ private fun CallScreenContent(onExit: () -> Unit) {
                     modifier = Modifier.align(Alignment.BottomStart).padding(16.dp),
                 )
 
-                if (myMetrics.isNotEmpty()) {
-                    MetricsPanel(
-                        metrics = myMetrics,
-                        modifier = Modifier.align(Alignment.TopEnd).systemBarsPadding().padding(top = 80.dp, end = 12.dp),
-                    )
-                }
-
                 EndCallButton(
                     onClick = { endCall() },
                     modifier = Modifier.align(Alignment.BottomCenter).systemBarsPadding().padding(bottom = 16.dp),
@@ -589,27 +567,6 @@ private fun MyVerdictChip(good: Boolean, modifier: Modifier = Modifier) {
             color = Color.White.copy(alpha = 0.9f),
             fontSize = 12.sp,
         )
-    }
-}
-
-/** Live readout of this phone's own raw liveness numbers (plan.md §5, §6.1) -- makes the
- * actual gyroscope/vision correlation and illumination scoring behind "Verified" visible
- * instead of just a pass/fail label, useful for demonstrating the analysis is real. */
-@Composable
-private fun MetricsPanel(metrics: List<Pair<String, String>>, modifier: Modifier = Modifier) {
-    Column(
-        modifier = modifier
-            .clip(RoundedCornerShape(10.dp))
-            .background(Color.Black.copy(alpha = 0.6f))
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        horizontalAlignment = Alignment.End,
-    ) {
-        metrics.forEach { (label, value) ->
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(label, color = Color.White.copy(alpha = 0.6f), fontSize = 10.sp)
-                Text(value, color = Color(0xFF3DDC97), fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
-            }
-        }
     }
 }
 
