@@ -54,6 +54,13 @@ async def telemetry_ws(ws: WebSocket, session_id: str):
             for f in chunk.get("frames", []):
                 f["jpeg_bytes"] = base64.b64decode(f.pop("jpeg_b64"))
 
+            gyro_samples = chunk.get("imu", {}).get("gyro", [])
+            if gyro_samples:
+                # Raw sensor values as sent by the phone -- [t_ns, x, y, z] in rad/s per
+                # axis -- tagged separately (GYRO_RAW) from the main verdict log line below
+                # so it's filterable on its own in Render's log search.
+                logger.info("seq=%s GYRO_RAW %s", seq, gyro_samples)
+
             try:
                 # engine.ingest() does real CPU work (OpenCV optical flow, scipy bandpass
                 # filtering, brute-force axis-mapping search) synchronously -- run it off
